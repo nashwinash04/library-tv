@@ -13,22 +13,16 @@ html, body {
   font-family: monospace;
 }
 
-/* CRT screen */
-.crt {
-  position: fixed;
-  inset: 0;
-}
-
-/* YouTube player */
+/* VIDEO */
 #player {
   position: fixed;
   inset: 0;
   width: 100vw;
   height: 100vh;
-  filter: contrast(1.25) saturate(1.4) brightness(0.85);
+  filter: contrast(1.3) saturate(1.4) brightness(0.85);
 }
 
-/* scanlines */
+/* CRT OVERLAY */
 .crt::after {
   content: "";
   position: absolute;
@@ -42,20 +36,7 @@ html, body {
   pointer-events: none;
 }
 
-/* vignette */
-.crt::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(
-    ellipse at center,
-    rgba(0,0,0,0) 40%,
-    rgba(0,0,0,0.75) 100%
-  );
-  pointer-events: none;
-}
-
-/* ONLY TEXT */
+/* TOP TEXT ONLY */
 .now {
   position: fixed;
   top: 10px;
@@ -76,9 +57,9 @@ html, body {
   height: 70px;
   background: #111;
   border: 2px solid #00ff99;
-  z-index: 20;
-  overflow: hidden;
   transition: 0.2s;
+  overflow: hidden;
+  z-index: 20;
 }
 
 .remote:hover {
@@ -92,7 +73,6 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  transition: 0.2s;
 }
 
 .remote:hover .controls {
@@ -126,8 +106,8 @@ button:hover {
 <div class="remote">
   <div class="controls">
     <button onclick="prevVideo()">⏮ Prev</button>
-    <button onclick="togglePlay()">⏯ Play/Pause</button>
     <button onclick="nextVideo()">⏭ Next</button>
+    <button onclick="togglePlay()">⏯ Play</button>
     <button onclick="toggleMute()">🔊 Mute</button>
 
     <hr style="border:0;border-top:1px solid #00ff99;opacity:0.3">
@@ -143,21 +123,32 @@ button:hover {
 /* ---------------- CHANNELS ---------------- */
 const channels = [
   "UC_O58Rr2DOskJvs9bArpLkQ", // Library of Letourneau
-  "UC_x5XG1OV2P6uZZ5FSM9Ttw"  // sample backup channel
+  "UC_x5XG1OV2P6uZZ5FSM9Ttw"  // backup channel
 ];
 
 let player;
 let videos = [];
-let index = 0;
+let history = [];
 let currentChannel = 0;
 
-/* ---------------- SHUFFLE ---------------- */
-function shuffle(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
+/* ---------------- TRUE RANDOM (NO CLUMPING) ---------------- */
+function getRandomVideo() {
+  let pool = videos.filter(v => !history.includes(v));
+
+  if (pool.length === 0) {
+    history = [];
+    pool = [...videos];
   }
-  return arr;
+
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+
+  history.push(pick);
+
+  if (history.length > 10) {
+    history.shift();
+  }
+
+  return pick;
 }
 
 /* ---------------- LOAD CHANNEL ---------------- */
@@ -174,16 +165,14 @@ async function loadChannel(i) {
 
   const data = await res.json();
 
-  videos = shuffle(
-    data.items.map(v => v.link.split("v=")[1])
-  );
+  videos = data.items.map(v => v.link.split("v=")[1]);
 
-  index = 0;
+  history = [];
 
   playNext();
 }
 
-/* ---------------- PLAYER READY ---------------- */
+/* ---------------- PLAYER INIT ---------------- */
 function onYouTubeIframeAPIReady() {
   player = new YT.Player("player", {
     videoId: "",
@@ -196,19 +185,16 @@ function onYouTubeIframeAPIReady() {
     },
     events: {
       onReady: () => loadChannel(0),
-      onStateChange: onState
+      onStateChange: e => {
+        if (e.data === 0) playNext();
+      }
     }
   });
 }
 
-/* ---------------- PLAY NEXT (FIXED) ---------------- */
+/* ---------------- PLAY ---------------- */
 function playNext() {
-  if (index >= videos.length) {
-    videos = shuffle(videos);
-    index = 0;
-  }
-
-  const vid = videos[index++];
+  const vid = getRandomVideo();
   player.loadVideoById(vid);
 
   document.getElementById("now").innerText =
@@ -221,13 +207,11 @@ function nextVideo() {
 }
 
 function prevVideo() {
-  index = Math.max(0, index - 2);
   playNext();
 }
 
 function togglePlay() {
-  const state = player.getPlayerState();
-  if (state === 1) player.pauseVideo();
+  if (player.getPlayerState() === 1) player.pauseVideo();
   else player.playVideo();
 }
 
@@ -236,16 +220,8 @@ function toggleMute() {
   else player.mute();
 }
 
-/* ---------------- CHANNEL SWITCH ---------------- */
 function setChannel(i) {
   loadChannel(i);
-}
-
-/* ---------------- AUTO NEXT ---------------- */
-function onState(e) {
-  if (e.data === 0) {
-    playNext();
-  }
 }
 </script>
 
