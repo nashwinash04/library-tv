@@ -13,7 +13,6 @@ html, body {
   font-family: monospace;
 }
 
-/* VIDEO */
 #player {
   position: fixed;
   inset: 0;
@@ -22,21 +21,6 @@ html, body {
   filter: contrast(1.3) saturate(1.4) brightness(0.85);
 }
 
-/* CRT OVERLAY */
-.crt::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(0,0,0,0.18),
-    rgba(0,0,0,0.18) 1px,
-    rgba(255,255,255,0.02) 2px
-  );
-  pointer-events: none;
-}
-
-/* TOP TEXT ONLY */
 .now {
   position: fixed;
   top: 10px;
@@ -45,10 +29,8 @@ html, body {
   color: #00ff99;
   font-size: 14px;
   text-shadow: 0 0 10px #00ff99;
-  z-index: 10;
 }
 
-/* RETRO REMOTE */
 .remote {
   position: fixed;
   bottom: 40px;
@@ -57,9 +39,8 @@ html, body {
   height: 70px;
   background: #111;
   border: 2px solid #00ff99;
-  transition: 0.2s;
   overflow: hidden;
-  z-index: 20;
+  transition: 0.2s;
 }
 
 .remote:hover {
@@ -85,53 +66,54 @@ button {
   border: 1px solid #00ff99;
   font-family: monospace;
   padding: 6px;
-  cursor: pointer;
-}
-
-button:hover {
-  background: #00ff99;
-  color: black;
 }
 </style>
 </head>
 
 <body>
 
-<div class="crt">
-  <div id="player"></div>
-</div>
-
-<div class="now" id="now">LOADING...</div>
+<div id="player"></div>
+<div class="now" id="now">LOADING FULL CHANNEL...</div>
 
 <div class="remote">
   <div class="controls">
-    <button onclick="prevVideo()">⏮ Prev</button>
-    <button onclick="nextVideo()">⏭ Next</button>
-    <button onclick="togglePlay()">⏯ Play</button>
-    <button onclick="toggleMute()">🔊 Mute</button>
-
-    <hr style="border:0;border-top:1px solid #00ff99;opacity:0.3">
-
-    <button onclick="setChannel(0)">Channel 1</button>
-    <button onclick="setChannel(1)">Channel 2</button>
+    <button onclick="nextVideo()">NEXT</button>
+    <button onclick="togglePlay()">PLAY/PAUSE</button>
+    <button onclick="toggleMute()">MUTE</button>
   </div>
 </div>
 
 <script src="https://www.youtube.com/iframe_api"></script>
 
 <script>
-/* ---------------- CHANNELS ---------------- */
-const channels = [
-  "UC_O58Rr2DOskJvs9bArpLkQ", // Library of Letourneau
-  "UC_x5XG1OV2P6uZZ5FSM9Ttw"  // backup channel
-];
+const API_KEY = "YOUR_YOUTUBE_API_KEY"; // REQUIRED
+const CHANNEL_ID = "UC_O58Rr2DOskJvs9bArpLkQ";
 
 let player;
 let videos = [];
 let history = [];
-let currentChannel = 0;
 
-/* ---------------- TRUE RANDOM (NO CLUMPING) ---------------- */
+/* ---------------- FETCH ALL VIDEOS (PAGINATED) ---------------- */
+async function loadAllVideos(pageToken = "") {
+  const url =
+    `https://www.googleapis.com/youtube/v3/search?` +
+    `key=${AIzaSyCX5hQvyCrd3-Y7TK6G2xuOcNi667EGg1Y}` + 
+    `&channelId=${CHANNEL_ID}` +
+    `&part=id&order=date&maxResults=50&pageToken=${pageToken}`;
+
+  const res = await fetch(url);
+  const data = await res.json();
+
+  data.items.forEach(v => {
+    if (v.id.videoId) videos.push(v.id.videoId);
+  });
+
+  if (data.nextPageToken) {
+    await loadAllVideos(data.nextPageToken);
+  }
+}
+
+/* ---------------- TRUE RANDOM ---------------- */
 function getRandomVideo() {
   let pool = videos.filter(v => !history.includes(v));
 
@@ -141,50 +123,27 @@ function getRandomVideo() {
   }
 
   const pick = pool[Math.floor(Math.random() * pool.length)];
-
   history.push(pick);
 
-  if (history.length > 10) {
-    history.shift();
-  }
+  if (history.length > 15) history.shift();
 
   return pick;
 }
 
-/* ---------------- LOAD CHANNEL ---------------- */
-async function loadChannel(i) {
-  currentChannel = i;
-
-  const rss =
-    `https://www.youtube.com/feeds/videos.xml?channel_id=${channels[i]}`;
-
-  const res = await fetch(
-    "https://api.rss2json.com/v1/api.json?rss_url=" +
-    encodeURIComponent(rss)
-  );
-
-  const data = await res.json();
-
-  videos = data.items.map(v => v.link.split("v=")[1]);
-
-  history = [];
-
-  playNext();
-}
-
-/* ---------------- PLAYER INIT ---------------- */
+/* ---------------- PLAYER ---------------- */
 function onYouTubeIframeAPIReady() {
   player = new YT.Player("player", {
     videoId: "",
     playerVars: {
       autoplay: 1,
       controls: 1,
-      rel: 0,
-      modestbranding: 1,
       mute: 1
     },
     events: {
-      onReady: () => loadChannel(0),
+      onReady: async () => {
+        await loadAllVideos();
+        playNext();
+      },
       onStateChange: e => {
         if (e.data === 0) playNext();
       }
@@ -206,10 +165,6 @@ function nextVideo() {
   playNext();
 }
 
-function prevVideo() {
-  playNext();
-}
-
 function togglePlay() {
   if (player.getPlayerState() === 1) player.pauseVideo();
   else player.playVideo();
@@ -218,10 +173,6 @@ function togglePlay() {
 function toggleMute() {
   if (player.isMuted()) player.unMute();
   else player.mute();
-}
-
-function setChannel(i) {
-  loadChannel(i);
 }
 </script>
 
