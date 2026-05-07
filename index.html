@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8" />
-<title>Retro TV</title>
+<title>CRT TV</title>
 
 <style>
 html, body {
@@ -13,12 +13,11 @@ html, body {
   font-family: monospace;
 }
 
-/* CRT screen effect wrapper */
+/* CRT screen */
 .crt {
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: black;
 }
 
 /* YouTube player */
@@ -28,34 +27,31 @@ html, body {
   width: 100vw;
   height: 100vh;
   filter:
-    contrast(1.2)
-    saturate(1.3)
-    brightness(0.9)
-    blur(0.2px);
-  z-index: 1;
+    contrast(1.3)
+    saturate(1.4)
+    brightness(0.85)
+    blur(0.3px);
 }
 
-/* Scanlines */
+/* CRT scanlines + flicker */
 .crt::after {
   content: "";
   position: absolute;
   inset: 0;
   background: repeating-linear-gradient(
     to bottom,
-    rgba(0,0,0,0.15),
-    rgba(0,0,0,0.15) 1px,
-    rgba(255,255,255,0.02) 2px
+    rgba(0,0,0,0.2),
+    rgba(0,0,0,0.2) 1px,
+    rgba(255,255,255,0.03) 2px
   );
   pointer-events: none;
-  z-index: 2;
-  animation: flicker 0.15s infinite;
+  animation: flicker 0.12s infinite;
 }
 
-/* subtle flicker */
 @keyframes flicker {
-  0% { opacity: 0.95; }
+  0% { opacity: 0.92; }
   50% { opacity: 1; }
-  100% { opacity: 0.96; }
+  100% { opacity: 0.95; }
 }
 
 /* vignette */
@@ -66,50 +62,82 @@ html, body {
   background: radial-gradient(
     ellipse at center,
     rgba(0,0,0,0) 40%,
-    rgba(0,0,0,0.6) 100%
+    rgba(0,0,0,0.75) 100%
   );
-  z-index: 3;
   pointer-events: none;
 }
 
-/* HUD overlay */
-.overlay {
+/* TOP CENTER NOW PLAYING (ONLY TEXT ON SCREEN) */
+.nowPlaying {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  z-index: 4;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
   color: #00ff99;
-  padding: 15px;
+  font-size: 14px;
   text-shadow: 0 0 10px #00ff99;
-  pointer-events: none;
+  opacity: 0.9;
 }
 
-/* top bar */
-.top {
+/* RETRO REMOTE */
+.remote {
+  position: fixed;
+  bottom: 40px;
+  right: 40px;
+  width: 70px;
+  height: 70px;
+  background: #111;
+  border: 2px solid #00ff99;
+  border-radius: 12px;
+  z-index: 10;
+  overflow: hidden;
+  transition: 0.2s;
+}
+
+/* expand on hover */
+.remote:hover {
+  width: 220px;
+  height: 260px;
+}
+
+/* buttons hidden until hover */
+.controls {
+  opacity: 0;
+  transition: 0.2s;
   display: flex;
-  justify-content: space-between;
-  font-size: 14px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+}
+
+.remote:hover .controls {
+  opacity: 1;
 }
 
 /* buttons */
 button {
-  position: fixed;
-  bottom: 25px;
-  right: 25px;
-  z-index: 5;
   background: black;
   color: #00ff99;
   border: 1px solid #00ff99;
-  padding: 10px 15px;
-  cursor: pointer;
+  padding: 6px;
   font-family: monospace;
-  text-shadow: 0 0 5px #00ff99;
+  cursor: pointer;
 }
 
 button:hover {
   background: #00ff99;
   color: black;
+}
+
+/* small remote label icon */
+.remote::before {
+  content: "📺";
+  position: absolute;
+  top: 18px;
+  left: 20px;
+  font-size: 28px;
+  opacity: 0.8;
 }
 </style>
 </head>
@@ -120,44 +148,68 @@ button:hover {
   <div id="player"></div>
 </div>
 
-<div class="overlay">
-  <div class="top">
-    <div>📺 RETRO TV CHANNEL</div>
-    <div id="now">LOADING...</div>
+<div class="nowPlaying" id="title">LOADING...</div>
+
+<div class="remote">
+  <div class="controls">
+
+    <button onclick="prevVideo()">⏮ Prev</button>
+    <button onclick="togglePlay()">⏯ Play/Pause</button>
+    <button onclick="nextVideo()">⏭ Next</button>
+    <button onclick="toggleMute()">🔊 Mute</button>
+
+    <hr style="border:0;border-top:1px solid #00ff99;opacity:0.3">
+
+    <button onclick="setChannel(0)">Channel 1</button>
+    <button onclick="setChannel(1)">Channel 2</button>
+    <button onclick="setChannel(2)">Channel 3</button>
+
   </div>
 </div>
-
-<button onclick="nextVideo()">NEXT ▶</button>
 
 <script src="https://www.youtube.com/iframe_api"></script>
 
 <script>
-const channelId = "UC_O58Rr2DOskJvs9bArpLkQ";
+/* ---------------- CHANNELS ---------------- */
+const channels = [
+  "UC_O58Rr2DOskJvs9bArpLkQ", // Library of Letourneau
+  "UC_x5XG1OV2P6uZZ5FSM9Ttw", // example 2 (Google dev channel)
+  "UC29ju8bIPH5as8OGnQzwJyA"  // example 3 (Traversy Media)
+];
 
+let currentChannel = 0;
 let videos = [];
 let player;
 
-// fetch channel uploads
-async function loadVideos() {
-  const rss = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
+/* ---------------- LOAD CHANNEL ---------------- */
+async function loadChannel(index) {
+  currentChannel = index;
 
-  const res = await fetch("https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(rss));
+  const rss = `https://www.youtube.com/feeds/videos.xml?channel_id=${channels[index]}`;
+
+  const res = await fetch(
+    "https://api.rss2json.com/v1/api.json?rss_url=" +
+    encodeURIComponent(rss)
+  );
+
   const data = await res.json();
 
   videos = data.items.map(v => v.link.split("v=")[1]);
 
-  startPlayer();
+  playRandom();
 }
 
-// random video
+/* ---------------- RANDOM VIDEO ---------------- */
 function rand() {
   return videos[Math.floor(Math.random() * videos.length)];
 }
 
-// start player
-function startPlayer() {
+/* ---------------- PLAYER ---------------- */
+function onYouTubeIframeAPIReady() {
+  loadChannel(0);
+
   player = new YT.Player("player", {
-    videoId: rand(),
+    videoId: "",
     playerVars: {
       autoplay: 1,
       controls: 1,
@@ -166,40 +218,56 @@ function startPlayer() {
       mute: 1
     },
     events: {
+      onReady: () => playRandom(),
       onStateChange: onState
     }
   });
-
-  updateHUD();
 }
 
-// when video ends
+/* ---------------- PLAY ---------------- */
+function playRandom() {
+  const vid = rand();
+  player.loadVideoById(vid);
+  updateTitle(vid);
+}
+
+/* ---------------- NEXT / PREV ---------------- */
+function nextVideo() {
+  playRandom();
+}
+
+function prevVideo() {
+  playRandom();
+}
+
+/* ---------------- PLAYBACK CONTROLS ---------------- */
+function togglePlay() {
+  const state = player.getPlayerState();
+  if (state === 1) player.pauseVideo();
+  else player.playVideo();
+}
+
+function toggleMute() {
+  if (player.isMuted()) player.unMute();
+  else player.mute();
+}
+
+/* ---------------- CHANNEL SWITCH ---------------- */
+function setChannel(i) {
+  loadChannel(i);
+}
+
+/* ---------------- END AUTO NEXT ---------------- */
 function onState(e) {
   if (e.data === 0) {
-    nextVideo();
+    playRandom();
   }
 }
 
-// next video button
-function nextVideo() {
-  const vid = rand();
-  player.loadVideoById(vid);
-  updateHUD();
-}
-
-// HUD update
-function updateHUD() {
-  setTimeout(() => {
-    try {
-      document.getElementById("now").innerText =
-        "PLAYING: " + player.getVideoData().video_id;
-    } catch {}
-  }, 500);
-}
-
-// API ready
-function onYouTubeIframeAPIReady() {
-  loadVideos();
+/* ---------------- HUD TEXT ---------------- */
+function updateTitle(vid) {
+  document.getElementById("title").innerText =
+    "NOW PLAYING: " + vid;
 }
 </script>
 
